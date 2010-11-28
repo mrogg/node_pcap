@@ -1211,9 +1211,7 @@ TCP_tracker.prototype.track_states.SYN_SENT = function (packet, session) {
         session.recv_window_scale = tcp.options.window_scale || 1; // multiplier, not bit shift value
         session.state = "SYN_RCVD";
     } else if (tcp.flags.rst) {
-        session.state = "CLOSED";
-        delete this.sessions[session.key];
-        this.emit('reset', session, "recv"); // TODO - check which direction did the reset, probably recv
+        this.reset(session, 'dst');
     } else {
 //        console.log("Didn't get SYN-ACK packet from dst while handshaking: " + sys.inspect(tcp, false, 4));
     }
@@ -1247,7 +1245,11 @@ TCP_tracker.prototype.track_states.ESTAB = function (packet, session) {
 //     console.log(sys.inspect(ip, false, 5));
 // }
 
-    // TODO - check for tcp.flags.rst and emit reset event
+    // If we get a RST, close the session.
+    if (tcp.flags.rst) {
+        (src === session.src) ? rst_from='src' : rst_from='dst';
+        this.reset(session, rst_from);
+    }
 
     if (src === session.src) { // this packet came from the active opener / client
         session.send_bytes_ip += ip.header_bytes;
@@ -1388,6 +1390,12 @@ TCP_tracker.prototype.track_states.CLOSED = function (packet, session) {
 
     // The states aren't quite right here.  All possible states of FIN and FIN/ACKs aren't handled.
     // So some of the bytes of the session may not be properly accounted for.
+};
+
+TCP_tracker.prototype.reset = function (session, rst_from) {
+    session.state = "CLOSED";
+    delete this.sessions[session.key];
+    this.emit('reset', session, rst_from);
 };
 
 TCP_tracker.prototype.track_next = function (key, packet) {
